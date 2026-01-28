@@ -1,2 +1,6 @@
 Manifest.toml
-
+*.csv
+*.png
+examples/.DS_Store
+.DS_Store
+.vscode/settings.json
