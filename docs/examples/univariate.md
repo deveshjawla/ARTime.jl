@@ -162,15 +162,15 @@ signal, anomaly_positions = generate_synthetic_data()
 ```julia
 dmin, dmax = minimum(signal), maximum(signal)
 dlength = length(signal)
-ts = ARTime.TimeSeries()
-ARTime.init(dmin, dmax, dlength, ts)
+tsd = ARTime.TimeSeriesDetector()
+ARTime.init(dmin, dmax, dlength, tsd)
 ```
 
 **3. Detect Anomalies**:
 ```julia
 anomalies = zeros(length(signal))
 for (i, A) in enumerate(signal)
-    anomalies[i] = ARTime.process_sample!(A, ts)
+    anomalies[i] = ARTime.process_sample!(A, tsd)
 end
 ```
 
@@ -340,10 +340,10 @@ signal, anomaly_positions = generate_synthetic_data()
 
 **2. Detect Anomalies**:
 ```julia
-ts = ARTime.TimeSeries()
-ARTime.init(minimum(signal), maximum(signal), length(signal), ts)
+tsd = ARTime.TimeSeriesDetector()
+ARTime.init(minimum(signal), maximum(signal), length(signal), tsd)
 for (i, A) in enumerate(signal)
-    anomalies[i] = ARTime.process_sample!(A, ts)
+    anomalies[i] = ARTime.process_sample!(A, tsd)
 end
 ```
 

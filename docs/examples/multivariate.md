@@ -206,8 +206,8 @@ dmax = maximum(signal, dims = 1)
 dlength = size(signal, 1)
 
 for feature_idx in 1:size(signal, 2)
-    ts = ARTime.TimeSeries()
-    ARTime.init(dmin[feature_idx], dmax[feature_idx], dlength, ts)
+    tsd = ARTime.TimeSeriesDetector()
+    ARTime.init(dmin[feature_idx], dmax[feature_idx], dlength, tsd)
 end
 ```
 
@@ -216,7 +216,7 @@ end
 anomalies = zeros(size(signal))
 for feature_idx in 1:size(signal, 2)
     for (i, A) in enumerate(signal[:, feature_idx])
-        anomalies[i, feature_idx] += ARTime.process_sample!(A, ts)
+        anomalies[i, feature_idx] += ARTime.process_sample!(A, tsd)
     end
 end
 ```
@@ -436,10 +436,10 @@ signal, anomaly_positions = generate_multivariate_data()
 **2. Detect Anomalies** (one ARTime instance per feature):
 ```julia
 for feature_idx in 1:size(signal, 2)
-    ts = ARTime.TimeSeries()
-    ARTime.init(dmin[feature_idx], dmax[feature_idx], dlength, ts)
+    tsd = ARTime.TimeSeriesDetector()
+    ARTime.init(dmin[feature_idx], dmax[feature_idx], dlength, tsd)
     for (i, A) in enumerate(signal[:, feature_idx])
-        anomalies[i, feature_idx] += ARTime.process_sample!(A, ts)
+        anomalies[i, feature_idx] += ARTime.process_sample!(A, tsd)
     end
 end
 ```

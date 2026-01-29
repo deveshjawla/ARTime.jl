@@ -27,14 +27,14 @@ import LinearAlgebra: norm
 using ARTime
 
 # Create detector
-ts = ARTime.TimeSeries()
+tsd = ARTime.TimeSeriesDetector()
 
 # Initialize
-ARTime.init(minimum(data), maximum(data), length(data), ts)
+ARTime.init(minimum(data), maximum(data), length(data), tsd)
 
 # Process samples
 for value in data
-    score = ARTime.process_sample!(value, ts)
+    score = ARTime.process_sample!(value, tsd)
 end
 ```
 
@@ -78,7 +78,7 @@ Creates a new ClassifyState with default values.
 
 ---
 
-### TimeSeries
+### TimeSeriesDetector
 
 Mutable struct that represents a time series anomaly detector with all its configuration parameters and state.
 
@@ -106,10 +106,10 @@ Mutable struct that represents a time series anomaly detector with all its confi
 #### Constructor
 
 ```julia
-ts = ARTime.TimeSeries()
+tsd = ARTime.TimeSeriesDetector()
 ```
 
-Creates a new TimeSeries with default configuration parameters.
+Creates a new TimeSeriesDetector with default configuration parameters.
 
 #### Configuration Parameters
 
@@ -145,7 +145,7 @@ Creates a new TimeSeries with default configuration parameters.
 ### init
 
 ```julia
-ARTime.init(dmin, dmax, dlength, ts = ts) -> Bool
+ARTime.init(dmin, dmax, dlength, tsd = tsd) -> Bool
 ```
 
 Initialize the time series detector with data bounds and length.
@@ -157,7 +157,7 @@ Initialize the time series detector with data bounds and length.
 | `dmin` | `Float64` | Minimum value in the time series. Used for normalization. |
 | `dmax` | `Float64` | Maximum value in the time series. Used for normalization. |
 | `dlength` | `Int` | Total number of samples in the time series. |
-| `ts` | `TimeSeries` | The TimeSeries object to initialize (optional, defaults to global `ts`). |
+| `tsd` | `TimeSeriesDetector` | The TimeSeriesDetector object to initialize (optional, defaults to global `tsd`). |
 
 #### Returns
 
@@ -195,14 +195,14 @@ This function computes and sets all derived parameters based on the data charact
 #### Example
 
 ```julia
-ts = ARTime.TimeSeries()
+tsd = ARTime.TimeSeriesDetector()
 data = load_your_data()
 
-ARTime.init(minimum(data), maximum(data), length(data), ts)
+ARTime.init(minimum(data), maximum(data), length(data), tsd)
 
-println("Probationary period: $(ts.probationary_period)")
-println("Downsampling step: $(ts.sstep)")
-println("Trend window: $(ts.trend_window)")
+println("Probationary period: $(tsd.probationary_period)")
+println("Downsampling step: $(tsd.sstep)")
+println("Trend window: $(tsd.trend_window)")
 ```
 
 #### Notes
@@ -216,7 +216,7 @@ println("Trend window: $(ts.trend_window)")
 ### process_sample!
 
 ```julia
-ARTime.process_sample!(A, ts = ts) -> Float64
+ARTime.process_sample!(A, tsd = tsd) -> Float64
 ```
 
 Process a single sample from the time series and return the anomaly score.
@@ -226,7 +226,7 @@ Process a single sample from the time series and return the anomaly score.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `A` | `Float64` | The raw sample value to process. |
-| `ts` | `TimeSeries` | The TimeSeries object (optional, defaults to global `ts`). |
+| `tsd` | `TimeSeriesDetector` | The TimeSeriesDetector object (optional, defaults to global `tsd`). |
 
 #### Returns
 
@@ -284,12 +284,12 @@ Once sufficient downsampled points are available (`dsi >= window`):
 #### Example
 
 ```julia
-ts = ARTime.TimeSeries()
-ARTime.init(minimum(data), maximum(data), length(data), ts)
+tsd = ARTime.TimeSeriesDetector()
+ARTime.init(minimum(data), maximum(data), length(data), tsd)
 
 anomaly_scores = zeros(length(data))
 for (i, value) in enumerate(data)
-    anomaly_scores[i] = ARTime.process_sample!(value, ts)
+    anomaly_scores[i] = ARTime.process_sample!(value, tsd)
     if anomaly_scores[i] > 0
         println("Anomaly at index $i with score $(anomaly_scores[i])")
     end
@@ -308,7 +308,7 @@ end
 ### process_features!
 
 ```julia
-ARTime.process_features!(f, i, ts) -> Float64
+ARTime.process_features!(f, i, tsd) -> Float64
 ```
 
 Process extracted features and return anomaly score. Handles both probationary period training and online anomaly detection.
@@ -319,7 +319,7 @@ Process extracted features and return anomaly score. Handles both probationary p
 |-----------|------|-------------|
 | `f` | `Vector{Float64}` | Feature vector extracted from time series window. |
 | `i` | `Int` | Downsample index (number of downsampled points processed so far). |
-| `ts` | `TimeSeries` | The TimeSeries object. |
+| `tsd` | `TimeSeriesDetector` | The TimeSeriesDetector object. |
 
 #### Returns
 
@@ -359,15 +359,15 @@ After probationary period:
 
 ```julia
 # During probationary period (automatically handled by process_sample!)
-for i in 1:ts.trend_window
+for i in 1:tsd.trend_window
     features = extract_features(data[i])
-    score = ARTime.process_features!(features, i, ts)  # Returns 0.0
+    score = ARTime.process_features!(features, i, tsd)  # Returns 0.0
 end
 
 # After probationary period
-for i in (ts.trend_window+1):length(data)
+for i in (tsd.trend_window+1):length(data)
     features = extract_features(data[i])
-    score = ARTime.process_features!(features, i, ts)
+    score = ARTime.process_features!(features, i, tsd)
     if score > 0
         println("Anomaly detected with score: $score")
     end
@@ -386,7 +386,7 @@ end
 ### detect!
 
 ```julia
-ARTime.detect!(f, i, ts) -> Float64
+ARTime.detect!(f, i, tsd) -> Float64
 ```
 
 Detect anomalies using ART network classification and adaptive vigilance.
@@ -397,7 +397,7 @@ Detect anomalies using ART network classification and adaptive vigilance.
 |-----------|------|-------------|
 | `f` | `Vector{Float64}` | Feature vector to classify. |
 | `i` | `Int` | Downsample index (time step in downsampled space). |
-| `ts` | `TimeSeries` | The TimeSeries object. |
+| `tsd` | `TimeSeriesDetector` | The TimeSeriesDetector object. |
 
 #### Returns
 
@@ -491,12 +491,12 @@ Case 2: Decreasing (if prev_rho_lb > min_sim_in_trend_window):
 features = extract_wavelet_features(data_window)
 
 # Detect anomaly
-score = ARTime.detect!(features, downsample_index, ts)
+score = ARTime.detect!(features, downsample_index, tsd)
 
 if score > 0
     println("Anomaly detected with confidence: $score")
-    println("Similarity: $(ts.state.art.A[end])")
-    println("Energy similarity: $(ts.state.art.Ae[end])")
+    println("Similarity: $(tsd.state.art.A[end])")
+    println("Energy similarity: $(tsd.state.art.Ae[end])")
 end
 ```
 
@@ -513,7 +513,7 @@ end
 ### confidence
 
 ```julia
-ARTime.confidence(features_sim, energy_sim, ts) -> Float64
+ARTime.confidence(features_sim, energy_sim, tsd) -> Float64
 ```
 
 Compute anomaly confidence score from feature and energy similarities.
@@ -524,7 +524,7 @@ Compute anomaly confidence score from feature and energy similarities.
 |-----------|------|-------------|
 | `features_sim` | `Float64` | Feature similarity score from ART network (0 to 1). |
 | `energy_sim` | `Float64` | Energy similarity score from ART network (0 to 1). |
-| `ts` | `TimeSeries` | The TimeSeries object containing ART configuration. |
+| `tsd` | `TimeSeriesDetector` | The TimeSeriesDetector object containing ART configuration. |
 
 #### Returns
 
@@ -589,11 +589,11 @@ score = min(1.0, score)
 
 ```julia
 # After ART classification
-features_sim = ts.state.art.A[end]      # e.g., 0.65
-energy_sim = ts.state.art.Ae[end]        # e.g., 0.70
+features_sim = tsd.state.art.A[end]      # e.g., 0.65
+energy_sim = tsd.state.art.Ae[end]        # e.g., 0.70
 
 # Compute confidence
-conf = ARTime.confidence(features_sim, energy_sim, ts)
+conf = ARTime.confidence(features_sim, energy_sim, tsd)
 # Result might be: 0.453217
 
 if conf > 0.5
@@ -613,7 +613,7 @@ end
 ### init_rho
 
 ```julia
-ARTime.init_rho(raw_x_optim, ts) -> Float64
+ARTime.init_rho(raw_x_optim, tsd) -> Float64
 ```
 
 Compute initial vigilance parameter (rho) from probationary period features.
@@ -623,7 +623,7 @@ Compute initial vigilance parameter (rho) from probationary period features.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `raw_x_optim` | `Matrix{Float64}` | Feature matrix from probationary period. Each column is a feature vector. Should contain features from indices `window:trend_window` (second half of probationary period). |
-| `ts` | `TimeSeries` | The TimeSeries object containing configuration. |
+| `tsd` | `TimeSeriesDetector` | The TimeSeriesDetector object containing configuration. |
 
 #### Returns
 
@@ -676,7 +676,7 @@ raw_x_sort[:, i] = raw_x_optim[sim_order[i]]
 
 - Create a new ART instance
 - Configure with same dimensions as main ART network
-- Set initial rho to `ts.initial_rho` (default: 0.80)
+- Set initial rho to `tsd.initial_rho` (default: 0.80)
 - Train on reordered features
 
 ###### 5. Rho Computation
@@ -702,16 +702,16 @@ return mean(art.A[(trend_window÷2):end])
 
 ```julia
 # After collecting probationary period features
-features_mat = hcat(ts.state.trend_window_f...)
+features_mat = hcat(tsd.state.trend_window_f...)
 
 # Use second half for rho computation (indices window:trend_window)
-rho = ARTime.init_rho(features_mat[:, ts.window:ts.trend_window], ts)
+rho = ARTime.init_rho(features_mat[:, tsd.window:tsd.trend_window], tsd)
 
 println("Initial rho: $rho")
 # Output might be: Initial rho: 0.8234
 
 # Set both bounds to this value
-ARTime.update_rho!(rho, rho, ts.state.art)
+ARTime.update_rho!(rho, rho, tsd.state.art)
 ```
 
 #### Notes
@@ -891,17 +891,17 @@ The vigilance parameters are updated in several contexts:
 
 ```julia
 # During initialization
-rho = ARTime.init_rho(features, ts)
-ARTime.update_rho!(rho, rho, ts.state.art)
+rho = ARTime.init_rho(features, tsd)
+ARTime.update_rho!(rho, rho, tsd.state.art)
 
 # After detecting an anomaly
 new_rho_lb = 0.75
 new_rho_ub = 0.90
-ARTime.update_rho!(new_rho_lb, new_rho_ub, ts.state.art)
+ARTime.update_rho!(new_rho_lb, new_rho_ub, tsd.state.art)
 
 # Check updated values
-println("rho_lb: $(ts.state.art.opts.rho_lb)")
-println("rho_ub: $(ts.state.art.opts.rho_ub)")
+println("rho_lb: $(tsd.state.art.opts.rho_lb)")
+println("rho_ub: $(tsd.state.art.opts.rho_ub)")
 ```
 
 #### Notes

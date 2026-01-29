@@ -401,12 +401,12 @@ probationary_period = 150  # 15% of 1000
 
 # First 150 samples: training (no anomalies)
 for i in 1:150
-    score = process_sample!(data[i], ts)
+    score = process_sample!(data[i], tsd)
     # score will be 0.0 (no anomalies reported)
 
 # After 150 samples: detection (anomalies possible)
 for i in 151:1000
-    score = process_sample!(data[i], ts)
+    score = process_sample!(data[i], tsd)
     # score may be > 0.0 (anomaly detected)
 ```
 

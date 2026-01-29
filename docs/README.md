@@ -46,16 +46,16 @@ julia --project=. -e 'using Pkg; Pkg.instantiate()'
 using ARTime
 
 # Create time series detector
-ts = ARTime.TimeSeries()
+tsd = ARTime.TimeSeriesDetector()
 
 # Initialize with data bounds
 data = load_your_data()  # Your time series data
-ARTime.init(minimum(data), maximum(data), length(data), ts)
+ARTime.init(minimum(data), maximum(data), length(data), tsd)
 
 # Process samples and detect anomalies
 anomaly_scores = zeros(length(data))
 for (i, value) in enumerate(data)
-    anomaly_scores[i] = ARTime.process_sample!(value, ts)
+    anomaly_scores[i] = ARTime.process_sample!(value, tsd)
 end
 
 # Anomalies have scores > 0
@@ -83,7 +83,7 @@ The main module implementing the anomaly detection algorithm.
 
 **Key Components**:
 - [`ClassifyState`](@ref): Internal state of the classifier
-- [`TimeSeries`](@ref): Configuration and state for time series processing
+- [`TimeSeriesDetector`](@ref): Configuration and state for time series processing
 - [`init()`](@ref): Initialize detector with data bounds
 - [`process_sample!()`](@ref): Process a single sample and return anomaly score
 - [`process_features!()`](@ref): Handle probationary period and online detection
@@ -273,7 +273,7 @@ Specificity = TN / (TN + FP)
 
 ## Configuration Parameters
 
-### TimeSeries Parameters
+### TimeSeriesDetector Parameters
 
 | Parameter | Type | Default | Description |
 |------------|------|----------|-------------|

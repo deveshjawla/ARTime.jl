@@ -49,13 +49,13 @@ The algorithm combines several techniques:
 using ARTime
 
 # Initialize time series detector
-ts = ARTime.TimeSeries()
-ARTime.init(minimum(data), maximum(data), length(data), ts)
+tsd = ARTime.TimeSeriesDetector()
+ARTime.init(ts, tsd)
 
 # Process each sample
 anomalies = zeros(length(data))
 for (i, value) in enumerate(data)
-	anomalies[i] = ARTime.process_sample!(value, ts)
+	anomalies[i] = ARTime.process_sample!(value, tsd)
 end
 
 # Anomalies > 0 indicate detected anomalies
@@ -63,7 +63,7 @@ end
 """
 module ARTime
 
-export TimeSeries, init, process_sample!
+export TimeSeriesDetector, init, process_sample!
 
 using Wavelets
 using Statistics
@@ -164,7 +164,7 @@ if state.mask_after_cat
 end
 ```
 
-See also [`TimeSeries`](@ref), [`init`](@ref), [`process_sample!`](@ref).
+See also [`TimeSeriesDetector`](@ref), [`init`](@ref), [`process_sample!`](@ref).
 """
 mutable struct ClassifyState
 	art::AdaptiveResonance.DVFA
@@ -213,7 +213,7 @@ mutable struct ClassifyState
 end
 
 """
-	TimeSeries
+	TimeSeriesDetector
 
 Represent a time series anomaly detector with all configuration parameters and state.
 This is the main interface for using the ARTime anomaly detection system.
@@ -283,14 +283,14 @@ This is the main interface for using the ARTime anomaly detection system.
 
 ```julia
 # Create a new time series detector
-ts = ARTime.TimeSeries()
+tsd = ARTime.TimeSeriesDetector()
 
 # Initialize with data bounds
-ARTime.init(minimum(data), maximum(data), length(data), ts)
+ARTime.init(ts, tsd)
 
 # Process samples
 for value in data
-	anomaly_score = ARTime.process_sample!(value, ts)
+	anomaly_score = ARTime.process_sample!(value, tsd)
 	if anomaly_score > 0
 		println("Anomaly detected with score: ", anomaly_score)
 	end
@@ -299,14 +299,14 @@ end
 
 ## Notes
 
-The `TimeSeries` struct combines configuration parameters with runtime state.
+The `TimeSeriesDetector` struct combines configuration parameters with runtime state.
 After initialization with [`init`](@ref), the detector processes samples
 sequentially using [`process_sample!`](@ref), which updates the internal state
 and returns anomaly scores.
 
 See also [`ClassifyState`](@ref), [`init`](@ref), [`process_sample!`](@ref).
 """
-mutable struct TimeSeries
+mutable struct TimeSeriesDetector
 	i::Int
 	state::ClassifyState
 	wavelett::Any
@@ -324,7 +324,7 @@ mutable struct TimeSeries
 	trend_window::Int
 	initial_rho::Float64
 
-	function TimeSeries()
+	function TimeSeriesDetector()
 		new(
 			1,
 			ClassifyState(),
@@ -347,17 +347,15 @@ mutable struct TimeSeries
 end
 
 """
-	init(dmin, dmax, dlength, ts = ts) -> Bool
+	init(ts, tsd = tsd) -> Bool
 
 Initialize the time series detector with data bounds and length.
 
 ## Arguments
 
-- `dmin::Float64`: Minimum value in the time series. Used for normalization.
-- `dmax::Float64`: Maximum value in the time series. Used for normalization.
-- `dlength::Int`: Total number of samples in the time series.
-- `ts::TimeSeries`: The `TimeSeries` object to initialize (optional, defaults to
-  global `ts`).
+- `ts::Vector{Float64}`: Time series data
+- `tsd::TimeSeriesDetector`: The `TimeSeriesDetector` object to initialize (optional, defaults to
+  global `tsd`).
 
 ## Returns
 
@@ -395,10 +393,10 @@ Compute and set all derived parameters based on the data characteristics:
 ## Examples
 
 ```julia
-ts = ARTime.TimeSeries()
-ARTime.init(minimum(data), maximum(data), length(data), ts)
-println("Probationary period: ", ts.probationary_period)
-println("Downsampling step: ", ts.sstep)
+tsd = ARTime.TimeSeriesDetector()
+ARTime.init(ts, tsd)
+println("Probationary period: ", tsd.probationary_period)
+println("Downsampling step: ", tsd.sstep)
 ```
 
 ## Notes
@@ -407,35 +405,39 @@ println("Downsampling step: ", ts.sstep)
 - The probationary period is crucial for learning normal patterns
 - All time-based parameters are derived from the data length
 
-See also [`TimeSeries`](@ref), [`process_sample!`](@ref).
+See also [`TimeSeriesDetector`](@ref), [`process_sample!`](@ref).
 """
-function init(dmin, dmax, dlength, ts = ts)
-	ts.dmin = dmin
-	ts.dmax = dmax
-	ts.dlength = dlength
-	probationary_period = dlength < 5000 ? Int.(floor(0.15 * dlength)) : 750
-	ts.probationary_period = probationary_period - mod(probationary_period, 2) # make an even number
-	ts.sstep = max(1, round(Int, div(ts.probationary_period, ts.window * ts.windows_per_pb)))
-	ts.trend_window = floor(Int, ts.probationary_period / ts.sstep)
-	ts.mask_rho_after_anomaly = ts.window * 1.5
+function init(ts, tsd = tsd)
+	# Get data statistics
+	tslength = lastindex(ts)
+	tsd.dlength = tslength
+	probationary_period = tslength < 5000 ? Int.(floor(0.15 * tslength)) : 750
+	tsmin = minimum(ts[1:probationary_period])
+	tsmax = maximum(ts[1:probationary_period])
+	tsd.dmin = tsmin
+	tsd.dmax = tsmax
+	tsd.probationary_period = probationary_period - mod(probationary_period, 2) # make an even number
+	tsd.sstep = max(1, round(Int, div(tsd.probationary_period, tsd.window * tsd.windows_per_pb)))
+	tsd.trend_window = floor(Int, tsd.probationary_period / tsd.sstep)
+	tsd.mask_rho_after_anomaly = tsd.window * 1.5
 	# initialise detector state variables
-	ts.state.sim_window = ones(ts.trend_window ÷ 2 + 1)
-	ts.state.sim_diff_window = zeros(ts.trend_window + 1)
-	ts.state.ds_window = zeros(ts.sstep) # downsampling window
-	ts.state.medbin = zeros(Int, ts.nlevels + 1)
-	ts.state.f_window = zeros(ts.window)
+	tsd.state.sim_window = ones(tsd.trend_window ÷ 2 + 1)
+	tsd.state.sim_diff_window = zeros(tsd.trend_window + 1)
+	tsd.state.ds_window = zeros(tsd.sstep) # downsampling window
+	tsd.state.medbin = zeros(Int, tsd.nlevels + 1)
+	tsd.state.f_window = zeros(tsd.window)
 	return true
 end
 
 """
-	process_sample!(A, ts = ts) -> Float64
+	process_sample!(A, tsd = tsd) -> Float64
 
 Process a single sample from the time series and return the anomaly score.
 
 ## Arguments
 
 - `A::Float64`: The raw sample value to process.
-- `ts::TimeSeries`: The `TimeSeries` object (optional, defaults to global `ts`).
+- `tsd::TimeSeriesDetector`: The `TimeSeriesDetector` object (optional, defaults to global `tsd`).
 
 ## Returns
 
@@ -495,12 +497,12 @@ Once sufficient downsampled points are available (`dsi >= window`):
 ## Examples
 
 ```julia
-ts = ARTime.TimeSeries()
-ARTime.init(minimum(data), maximum(data), length(data), ts)
+tsd = ARTime.TimeSeriesDetector()
+ARTime.init(ts, tsd)
 
 anomaly_scores = zeros(length(data))
 for (i, value) in enumerate(data)
-	anomaly_scores[i] = ARTime.process_sample!(value, ts)
+	anomaly_scores[i] = ARTime.process_sample!(value, tsd)
 	if anomaly_scores[i] > 0
 		println("Anomaly at index ", i, " with score ", anomaly_scores[i])
 	end
@@ -514,97 +516,97 @@ end
 - During probationary period, features are collected but no anomalies are reported
 - The function updates internal state incrementally for online processing
 
-See also [`init`](@ref), [`TimeSeries`](@ref), [`process_features!`](@ref).
+See also [`init`](@ref), [`TimeSeriesDetector`](@ref), [`process_features!`](@ref).
 """
-function process_sample!(A, ts = ts)
-	i = ts.i
-	ts.state.ds_window = [ts.state.ds_window[2:end]; A]
+function process_sample!(A, tsd = tsd)
+	i = tsd.i
+	tsd.state.ds_window = [tsd.state.ds_window[2:end]; A]
 	anomaly = 0.0
-	if mod(i, ts.sstep) == 0
+	if mod(i, tsd.sstep) == 0
 		# Downsample
-		mean = Statistics.mean(ts.state.ds_window)
-		max = maximum(ts.state.ds_window)
-		min = minimum(ts.state.ds_window)
-		if ts.state.dsi == 1
-			ts.state.ds_moving_average = mean
+		mean = Statistics.mean(tsd.state.ds_window)
+		max = maximum(tsd.state.ds_window)
+		min = minimum(tsd.state.ds_window)
+		if tsd.state.dsi == 1
+			tsd.state.ds_moving_average = mean
 		end
-		ts.state.ds_moving_average = (ts.state.ds_moving_average + mean) / 2
+		tsd.state.ds_moving_average = (tsd.state.ds_moving_average + mean) / 2
 		ds = max
 		# Spike below the mean
-		if abs(max - ts.state.ds_moving_average) < abs(min - ts.state.ds_moving_average)
+		if abs(max - tsd.state.ds_moving_average) < abs(min - tsd.state.ds_moving_average)
 			ds = min
 		end
 		if abs(ds - mean) < (0.1 * mean) # spike must be at least 10%
 			ds = mean
 		end
 		# Normalize
-		ds = ds - ts.dmin
-		if (ts.dmax - ts.dmin) != 0
-			ds = ds / (ts.dmax - ts.dmin)
+		ds = ds - tsd.dmin
+		if (tsd.dmax - tsd.dmin) != 0
+			ds = ds / (tsd.dmax - tsd.dmin)
 		end
 		# Discretize
-		level = round(Int, ds * ts.nlevels)
-		ds = level / ts.nlevels
+		level = round(Int, ds * tsd.nlevels)
+		ds = level / tsd.nlevels
 		# Levelize
-		ts.state.medbin[level+1] += 1
-		medpos = ts.state.dsi ÷ 2
-		if ts.state.dsi == 1
-			ts.state.medlevel = level
+		tsd.state.medbin[level+1] += 1
+		medpos = tsd.state.dsi ÷ 2
+		if tsd.state.dsi == 1
+			tsd.state.medlevel = level
 		end
-		if ts.state.medlevel > level
-			ts.state.belowmed += 1
-		elseif ts.state.medlevel < level
-			ts.state.abovemed += 1
+		if tsd.state.medlevel > level
+			tsd.state.belowmed += 1
+		elseif tsd.state.medlevel < level
+			tsd.state.abovemed += 1
 		end
 		# Not strictly a running median but close enough
-		if medpos < ts.state.abovemed
-			ts.state.belowmed += ts.state.medbin[ts.state.medlevel+1]
-			ts.state.medlevel += 1
-			while ts.state.medbin[ts.state.medlevel+1] == 0
-				ts.state.medlevel += 1
+		if medpos < tsd.state.abovemed
+			tsd.state.belowmed += tsd.state.medbin[tsd.state.medlevel+1]
+			tsd.state.medlevel += 1
+			while tsd.state.medbin[tsd.state.medlevel+1] == 0
+				tsd.state.medlevel += 1
 			end
-			ts.state.abovemed -= ts.state.medbin[ts.state.medlevel+1]
-		elseif medpos < ts.state.belowmed
-			ts.state.abovemed += ts.state.medbin[ts.state.medlevel+1]
-			ts.state.medlevel -= 1
-			while ts.state.medbin[ts.state.medlevel+1] == 0
-				ts.state.medlevel -= 1
+			tsd.state.abovemed -= tsd.state.medbin[tsd.state.medlevel+1]
+		elseif medpos < tsd.state.belowmed
+			tsd.state.abovemed += tsd.state.medbin[tsd.state.medlevel+1]
+			tsd.state.medlevel -= 1
+			while tsd.state.medbin[tsd.state.medlevel+1] == 0
+				tsd.state.medlevel -= 1
 			end
-			ts.state.belowmed -= ts.state.medbin[ts.state.medlevel+1]
+			tsd.state.belowmed -= tsd.state.medbin[tsd.state.medlevel+1]
 		end
-		med = ts.state.medlevel / ts.nlevels
-		if Base.abs(ds - med) < ts.discretize_chomp
+		med = tsd.state.medlevel / tsd.nlevels
+		if Base.abs(ds - med) < tsd.discretize_chomp
 			ds = med
 		end
 		# Extract features
-		features = zeros(ts.window * 2)
-		ts.state.f_window = [ts.state.f_window[2:end]; ds]
-		if ts.state.dsi >= ts.window
-			dw = copy(ts.state.f_window)
+		features = zeros(tsd.window * 2)
+		tsd.state.f_window = [tsd.state.f_window[2:end]; ds]
+		if tsd.state.dsi >= tsd.window
+			dw = copy(tsd.state.f_window)
 			dw_min = minimum(dw)
 			dw = dw .- dw_min
 			dw_max = maximum(dw)
 			if dw_max != 0
 				dw = dw ./ dw_max
 			end
-			fw = dwt(dw, ts.wavelett)
+			fw = dwt(dw, tsd.wavelett)
 			fw_min = minimum(fw)
 			fw = (fw .- fw_min)
 			fw_max = maximum(fw)
 			if fw_max != 0
 				fw = fw ./ fw_max
 			end
-			features = [fw; ts.state.f_window]
+			features = [fw; tsd.state.f_window]
 		end
-		anomaly = process_features!(features, ts.state.dsi, ts)
-		ts.state.dsi += 1
+		anomaly = process_features!(features, tsd.state.dsi, tsd)
+		tsd.state.dsi += 1
 	end
-	ts.i += 1
+	tsd.i += 1
 	return anomaly
 end
 
 """
-	process_features!(f, i, ts) -> Float64
+	process_features!(f, i, tsd) -> Float64
 
 Process extracted features and return anomaly score. Handle both probationary
 period training and online anomaly detection.
@@ -613,7 +615,7 @@ period training and online anomaly detection.
 
 - `f::Vector{Float64}`: Feature vector extracted from time series window.
 - `i::Int`: Downsample index (number of downsampled points processed so far).
-- `ts::TimeSeries`: The `TimeSeries` object.
+- `tsd::TimeSeriesDetector`: The `TimeSeriesDetector` object.
 
 ## Returns
 
@@ -653,15 +655,15 @@ After probationary period:
 
 ```julia
 # During probationary period (automatically handled by process_sample!)
-for i in 1:ts.trend_window
+for i in 1:tsd.trend_window
 	features = extract_features(data[i])
-	score = process_features!(features, i, ts)  # Returns 0.0
+	score = process_features!(features, i, tsd)  # Returns 0.0
 end
 
 # After probationary period
-for i in (ts.trend_window+1):length(data)
+for i in (tsd.trend_window+1):length(data)
 	features = extract_features(data[i])
-	score = process_features!(features, i, ts)
+	score = process_features!(features, i, tsd)
 	if score > 0
 		println("Anomaly detected with score: ", score)
 	end
@@ -678,31 +680,31 @@ end
 
 See also [`detect!`](@ref), [`init_rho`](@ref), [`process_sample!`](@ref).
 """
-function process_features!(f, i, ts)
+function process_features!(f, i, tsd)
 	anomaly = 0.0
-	if i <= ts.trend_window
+	if i <= tsd.trend_window
 		# Here we could build a matrix instead of an array
-		push!(ts.state.trend_window_f, f)
+		push!(tsd.state.trend_window_f, f)
 		# Batch process the probationary period
-		if i == ts.trend_window
-			features_mat = hcat(ts.state.trend_window_f...)
-			ts.state.art.config.dim = length(f)
-			ts.state.art.config.dim_comp = 2 * ts.state.art.config.dim
-			ts.state.art.config.setup = true
-			rho = init_rho(features_mat[:, ts.window:ts.trend_window], ts)
-			update_rho!(rho, rho, ts.state.art)
+		if i == tsd.trend_window
+			features_mat = hcat(tsd.state.trend_window_f...)
+			tsd.state.art.config.dim = length(f)
+			tsd.state.art.config.dim_comp = 2 * tsd.state.art.config.dim
+			tsd.state.art.config.setup = true
+			rho = init_rho(features_mat[:, tsd.window:tsd.trend_window], tsd)
+			update_rho!(rho, rho, tsd.state.art)
 			for (fi, ff) in enumerate(eachcol(features_mat))
-				detect!(ff, fi, ts)
+				detect!(ff, fi, tsd)
 			end
 		end
 	else
-		anomaly = detect!(f, i, ts)
+		anomaly = detect!(f, i, tsd)
 	end
 	return anomaly
 end
 
 """
-	detect!(f, i, ts) -> Float64
+	detect!(f, i, tsd) -> Float64
 
 Detect anomalies using ART network classification and adaptive vigilance.
 
@@ -710,7 +712,7 @@ Detect anomalies using ART network classification and adaptive vigilance.
 
 - `f::Vector{Float64}`: Feature vector to classify.
 - `i::Int`: Downsample index (time step in downsampled space).
-- `ts::TimeSeries`: The TimeSeries object.
+- `tsd::TimeSeriesDetector`: The TimeSeriesDetector object.
 
 ## Returns
 
@@ -806,12 +808,12 @@ Case 2: Decreasing (if prev_rho_lb > min_sim_in_trend_window):
 features = extract_wavelet_features(data_window)
 
 # Detect anomaly
-score = detect!(features, downsample_index, ts)
+score = detect!(features, downsample_index, tsd)
 
 if score > 0
 	println("Anomaly detected with confidence: ", score)
-	println("Similarity: ", ts.state.art.A[end])
-	println("Energy similarity: ", ts.state.art.Ae[end])
+	println("Similarity: ", tsd.state.art.A[end])
+	println("Energy similarity: ", tsd.state.art.Ae[end])
 end
 ```
 
@@ -823,60 +825,60 @@ end
 - Confidence score combines feature similarity and energy similarity
 - The system balances precision (avoiding false positives) and recall (catching anomalies)
 """
-function detect!(f, i, ts)
-	update_rho_after_anomaly = (i - ts.state.last_anomaly_i) == ts.mask_rho_after_anomaly
-	update_rho_for_trend = (i - ts.state.last_rho_update_i) >= ts.trend_window ÷ 2
-	mask_after_anomaly = (i - ts.state.last_anomaly_i) <= ts.mask_rho_after_anomaly
-	if i > ts.trend_window + ts.mask_rho_after_anomaly && ts.state.mask_after_cat
-		if ts.state.no_new_cat_count >= ts.mask_rho_after_anomaly
-			ts.state.mask_after_cat = false
+function detect!(f, i, tsd)
+	update_rho_after_anomaly = (i - tsd.state.last_anomaly_i) == tsd.mask_rho_after_anomaly
+	update_rho_for_trend = (i - tsd.state.last_rho_update_i) >= tsd.trend_window ÷ 2
+	mask_after_anomaly = (i - tsd.state.last_anomaly_i) <= tsd.mask_rho_after_anomaly
+	if i > tsd.trend_window + tsd.mask_rho_after_anomaly && tsd.state.mask_after_cat
+		if tsd.state.no_new_cat_count >= tsd.mask_rho_after_anomaly
+			tsd.state.mask_after_cat = false
 		end
 	end
 	# The samples prior to a complete feature window are not used for training
 	# Call train! anyway but don't learn - this keeps ART indexes and arrays aligned with input data
-	if i < ts.window
-		AdaptiveResonance.train!(ts.state.art, f, learning = false)
+	if i < tsd.window
+		AdaptiveResonance.train!(tsd.state.art, f, learning = false)
 		cat = -1
 	else
-		cat = AdaptiveResonance.train!(ts.state.art, f)
+		cat = AdaptiveResonance.train!(tsd.state.art, f)
 	end
-	ts.state.no_new_cat_count = cat == -1 ? 0 : ts.state.no_new_cat_count + 1
-	OnlineStats.fit!(ts.state.rho_ub_mean, ts.state.art.A[i]) # running mean
-	ts.state.sim_window = [ts.state.sim_window[2:end]; ts.state.art.A[i]]
-	ts.state.sim_diff_window = [ts.state.sim_diff_window[2:end]; ts.state.art.opts.rho_ub - ts.state.art.A[i]]
+	tsd.state.no_new_cat_count = cat == -1 ? 0 : tsd.state.no_new_cat_count + 1
+	OnlineStats.fit!(tsd.state.rho_ub_mean, tsd.state.art.A[i]) # running mean
+	tsd.state.sim_window = [tsd.state.sim_window[2:end]; tsd.state.art.A[i]]
+	tsd.state.sim_diff_window = [tsd.state.sim_diff_window[2:end]; tsd.state.art.opts.rho_ub - tsd.state.art.A[i]]
 	# Store the smallest similarity during the masking window for each anomaly
-	if (i - ts.state.last_anomaly_i) < ts.mask_rho_after_anomaly && length(ts.state.anomaly_sim_history) > 0
-		if ts.state.art.A[i] < ts.state.anomaly_sim_history[end]
-			ts.state.anomaly_sim_history[end] = ts.state.art.A[i]
+	if (i - tsd.state.last_anomaly_i) < tsd.mask_rho_after_anomaly && length(tsd.state.anomaly_sim_history) > 0
+		if tsd.state.art.A[i] < tsd.state.anomaly_sim_history[end]
+			tsd.state.anomaly_sim_history[end] = tsd.state.art.A[i]
 		end
 	end
-	masking_anomaly = ts.state.mask_after_cat || mask_after_anomaly
+	masking_anomaly = tsd.state.mask_after_cat || mask_after_anomaly
 	below_last_scale = mask_after_anomaly ? 0.90 : 0.70
-	below_last = ts.state.art.A[i] < ts.state.last_anomaly_sim * below_last_scale
+	below_last = tsd.state.art.A[i] < tsd.state.last_anomaly_sim * below_last_scale
 	anomaly_with_cat = cat == -1 && (!masking_anomaly || below_last)
-	if i > ts.trend_window && anomaly_with_cat
-		anomaly = confidence(ts.state.art.A[i], ts.state.art.Ae[i], ts)
-		push!(ts.state.anomaly_sim_history, ts.state.art.A[i])
-		ts.state.last_anomaly_sim = ts.state.art.A[i]
-		ts.state.last_anomaly_i = i
+	if i > tsd.trend_window && anomaly_with_cat
+		anomaly = confidence(tsd.state.art.A[i], tsd.state.art.Ae[i], tsd)
+		push!(tsd.state.anomaly_sim_history, tsd.state.art.A[i])
+		tsd.state.last_anomaly_sim = tsd.state.art.A[i]
+		tsd.state.last_anomaly_i = i
 	else
 		anomaly = 0.0
 	end
-	ts.state.mask_after_cat = cat == -1 || ts.state.mask_after_cat
+	tsd.state.mask_after_cat = cat == -1 || tsd.state.mask_after_cat
 	# ART could use supervised learning to improve here, but NAB does not allow this
-	if i > ts.trend_window && (update_rho_after_anomaly || update_rho_for_trend)
-		min_sim_in_trend_window = minimum(ts.state.sim_window)
-		new_rho_ub = OnlineStats.value(ts.state.rho_ub_mean)
+	if i > tsd.trend_window && (update_rho_after_anomaly || update_rho_for_trend)
+		min_sim_in_trend_window = minimum(tsd.state.sim_window)
+		new_rho_ub = OnlineStats.value(tsd.state.rho_ub_mean)
 		new_rho_ub = min(0.97, new_rho_ub) # capping ub
-		prev_rho_lb = ts.state.art.opts.rho_lb
+		prev_rho_lb = tsd.state.art.opts.rho_lb
 		if prev_rho_lb <= min_sim_in_trend_window
 			incr = (min_sim_in_trend_window - prev_rho_lb) * 0.19
 			new_rho_lb = prev_rho_lb + incr
 		else
 			decr = 0.0
-			if i > ts.trend_window * 2
-				below_rho_idxs = findall(x -> x > 0.05, ts.state.sim_diff_window)
-				below_rho = ts.state.sim_diff_window[below_rho_idxs]
+			if i > tsd.trend_window * 2
+				below_rho_idxs = findall(x -> x > 0.05, tsd.state.sim_diff_window)
+				below_rho = tsd.state.sim_diff_window[below_rho_idxs]
 				below_rho = map(x -> min(0.37, x), below_rho)
 				if length(below_rho) > 0
 					decr = mean(below_rho)
@@ -884,20 +886,20 @@ function detect!(f, i, ts)
 			end
 			decr = max(0.01, decr)
 			new_rho_lb = prev_rho_lb - (decr / 2)
-			if length(ts.state.anomaly_sim_history) > 0
-				new_rho_lb = max(mean(ts.state.anomaly_sim_history), new_rho_lb)
+			if length(tsd.state.anomaly_sim_history) > 0
+				new_rho_lb = max(mean(tsd.state.anomaly_sim_history), new_rho_lb)
 			end
 		end
 		new_rho_lb = min(new_rho_ub, new_rho_lb)
-		update_rho!(new_rho_lb, new_rho_ub, ts.state.art)
-		ts.state.last_rho_update_i = i
-		ts.state.mask_after_cat = true
+		update_rho!(new_rho_lb, new_rho_ub, tsd.state.art)
+		tsd.state.last_rho_update_i = i
+		tsd.state.mask_after_cat = true
 	end
 	return anomaly
 end
 
 """
-	confidence(features_sim, energy_sim, ts) -> Float64
+	confidence(features_sim, energy_sim, tsd) -> Float64
 
 Compute anomaly confidence score from feature and energy similarities.
 
@@ -905,7 +907,7 @@ Compute anomaly confidence score from feature and energy similarities.
 
 - `features_sim::Float64`: Feature similarity score from ART network (0 to 1).
 - `energy_sim::Float64`: Energy similarity score from ART network (0 to 1).
-- `ts::TimeSeries`: The TimeSeries object containing ART configuration.
+- `tsd::TimeSeriesDetector`: The TimeSeriesDetector object containing ART configuration.
 
 ## Returns
 
@@ -972,11 +974,11 @@ score = min(1.0, score)
 
 ```julia
 # After ART classification
-features_sim = ts.state.art.A[end]      # e.g., 0.65
-energy_sim = ts.state.art.Ae[end]        # e.g., 0.70
+features_sim = tsd.state.art.A[end]      # e.g., 0.65
+energy_sim = tsd.state.art.Ae[end]        # e.g., 0.70
 
 # Compute confidence
-conf = confidence(features_sim, energy_sim, ts)
+conf = confidence(features_sim, energy_sim, tsd)
 # Result might be: 0.453217
 
 if conf > 0.5
@@ -993,17 +995,17 @@ end
 
 See also [`detect!`](@ref), [`similarity`](@ref).
 """
-function confidence(features_sim, energy_sim, ts)
+function confidence(features_sim, energy_sim, tsd)
 	features_sim = min(0.999, features_sim)
-	ub = ((1 - features_sim) - (1-ts.state.art.opts.rho_ub))/(1-features_sim)
-	lb = ((1 - features_sim) - (1-ts.state.art.opts.rho_lb))/(1-features_sim)
+	ub = ((1 - features_sim) - (1-tsd.state.art.opts.rho_ub))/(1-features_sim)
+	lb = ((1 - features_sim) - (1-tsd.state.art.opts.rho_lb))/(1-features_sim)
 	s = (ub*0.35 + lb*0.65) + (1.0 - energy_sim)*1.5
 	s = min(1.0, s)
 	return round(s, digits = 6)
 end
 
 """
-	init_rho(raw_x_optim, ts) -> Float64
+	init_rho(raw_x_optim, tsd) -> Float64
 
 Compute initial vigilance parameter (rho) from probationary period features.
 
@@ -1012,7 +1014,7 @@ Compute initial vigilance parameter (rho) from probationary period features.
 - `raw_x_optim::Matrix{Float64}`: Feature matrix from probationary period.
   Each column is a feature vector. Should contain features from indices
   `window:trend_window` (second half of probationary period).
-- `ts::TimeSeries`: The TimeSeries object containing configuration.
+- `tsd::TimeSeriesDetector`: The TimeSeriesDetector object containing configuration.
 
 ## Returns
 
@@ -1066,7 +1068,7 @@ raw_x_sort[:, i] = raw_x_optim[sim_order[i]]
 
 - Create a new ART instance
 - Configure with same dimensions as main ART network
-- Set initial rho to `ts.initial_rho` (default: 0.80)
+- Set initial rho to `tsd.initial_rho` (default: 0.80)
 - Train on reordered features
 
 #### 5. Rho Computation
@@ -1099,16 +1101,16 @@ return mean(art.A[(trend_window÷2):end])
 
 ```julia
 # After collecting probationary period features
-features_mat = hcat(ts.state.trend_window_f...)
+features_mat = hcat(tsd.state.trend_window_f...)
 
 # Use second half for rho computation (indices window:trend_window)
-rho = init_rho(features_mat[:, ts.window:ts.trend_window], ts)
+rho = init_rho(features_mat[:, tsd.window:tsd.trend_window], tsd)
 
 println("Initial rho: ", rho)
 # Output might be: Initial rho: 0.8234
 
 # Set both bounds to this value
-update_rho!(rho, rho, ts.state.art)
+update_rho!(rho, rho, tsd.state.art)
 ```
 
 ## Notes
@@ -1119,7 +1121,7 @@ update_rho!(rho, rho, ts.state.art)
 - Higher rho values create more specific categories
 - The function is called once during initialization
 """
-function init_rho(raw_x_optim, ts)
+function init_rho(raw_x_optim, tsd)
 	lengthx = length(raw_x_optim[1, :])
 	raw_x_sort = raw_x_optim
 	# Build a similarity matrix
@@ -1148,11 +1150,11 @@ function init_rho(raw_x_optim, ts)
 	end
 	# Find initial rho
 	art = AdaptiveResonance.DVFA()
-	art.config = ts.state.art.config
-	opt_rho = ts.initial_rho
+	art.config = tsd.state.art.config
+	opt_rho = tsd.initial_rho
 	update_rho!(opt_rho, opt_rho, art)
 	AdaptiveResonance.train!(art, raw_x_sort)
-	return mean(art.A[(ts.trend_window÷2):end])
+	return mean(art.A[(tsd.trend_window÷2):end])
 end
 
 """
@@ -1337,17 +1339,17 @@ The vigilance parameters are updated in several contexts:
 
 ```julia
 # During initialization
-rho = init_rho(features, ts)
-update_rho!(rho, rho, ts.state.art)
+rho = init_rho(features, tsd)
+update_rho!(rho, rho, tsd.state.art)
 
 # After detecting an anomaly
 new_rho_lb = 0.75
 new_rho_ub = 0.90
-update_rho!(new_rho_lb, new_rho_ub, ts.state.art)
+update_rho!(new_rho_lb, new_rho_ub, tsd.state.art)
 
 # Check updated values
-println("rho_lb: ", ts.state.art.opts.rho_lb)
-println("rho_ub: ", ts.state.art.opts.rho_ub)
+println("rho_lb: ", tsd.state.art.opts.rho_lb)
+println("rho_ub: ", tsd.state.art.opts.rho_ub)
 ```
 
 ## Notes

@@ -4,6 +4,8 @@ include("../src/EvalMetrics.jl")
 using .ARTime
 using CSV, DataFrames
 
+#TODO - Assume that the first anomaly detected is the changepoint and then second anomaly after that is the changepoint returning the process to normal = For this, we ask the user, what kind of process are they monitoring? If they expect point anomalies such as fraud detection, then we use the point AD, if it is process monitoring then we consider the point anomalies as changepoints. Also depending on the problem, we can adjust the vigilance parameters etc?!
+
 """
 # NAB (Numenta Anomaly Benchmark) Example
 
@@ -40,13 +42,13 @@ ts = Vector(df.value)
 tsmin = minimum(ts)
 tsmax = maximum(ts)
 tslength = lastindex(ts)
-p = ARTime.TimeSeries()
-ARTime.init(tsmin, tsmax, tslength, p)
+tsd = ARTime.TimeSeriesDetector()
+ARTime.init(ts, tsd)
 ```
 
 **3. Detect Anomalies**:
 ```julia
-anomalyscores = map(x -> ARTime.process_sample!(x, p), ts)
+anomalyscores = map(x -> ARTime.process_sample!(x, tsd), ts)
 ```
 
 ## Output
@@ -123,13 +125,13 @@ tsmax = maximum(ts)
 tslength = lastindex(ts)
 
 # Initialize ARTime detector
-p = ARTime.TimeSeries()
+tsd = ARTime.TimeSeriesDetector()
 
 # Configure detector with data bounds
-jline = ARTime.init(tsmin, tsmax, tslength, p)
+jline = ARTime.init(ts, tsd)
 
 # Process all samples and detect anomalies
-anomalyscores = map(x -> ARTime.process_sample!(x, p), ts)
+anomalyscores = map(x -> ARTime.process_sample!(x, tsd), ts)
 
 # Output results
 println("Processed ", tslength, " samples")
@@ -328,7 +330,7 @@ println("True anomalies: ", sum(true_labels[test_period_start:end]))
 # Example 3: Tune threshold using grid search
 println("\n--- Threshold Tuning (Grid Search) ---")
 tuning_results = tune_threshold(anomalyscores[test_period_start:end],
-	true_labels_demo[test_period_start:end],
+	true_labels[test_period_start:end],
 	n_thresholds = 20,
 	min_threshold = 0.0,
 	max_threshold = 1.0)

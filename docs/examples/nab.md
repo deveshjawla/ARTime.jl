@@ -35,17 +35,17 @@ using CSV, DataFrames
 
 # Load and process data
 df = CSV.read("Data/ARTime_art_daily_flatmiddle.csv", DataFrame)
-ts = Vector(df.value)
+tsd = Vector(df.value)
 
 # Initialize and run detector
-tsmin = minimum(ts)
-tsmax = maximum(ts)
-tslength = lastindex(ts)
+tsmin = minimum(tsd)
+tsmax = maximum(tsd)
+tslength = lastindex(tsd)
 
-p = ARTime.TimeSeries()
+p = ARTime.TimeSeriesDetector()
 jline = ARTime.init(tsmin, tsmax, tslength, p)
 
-anomalyscores = map(x -> ARTime.process_sample!(x, p), ts)
+anomalyscores = map(x -> ARTime.process_sample!(x, p), tsd)
 ```
 
 ## Process
@@ -54,7 +54,7 @@ anomalyscores = map(x -> ARTime.process_sample!(x, p), ts)
 
 ```julia
 df = CSV.read("Data/ARTime_art_daily_flatmiddle.csv", DataFrame)
-ts = Vector(df.value)
+tsd = Vector(df.value)
 ```
 
 - Loads CSV file using `CSV.jl` and `DataFrames.jl`
@@ -64,11 +64,11 @@ ts = Vector(df.value)
 ### 2. Initialize Detector
 
 ```julia
-tsmin = minimum(ts)
-tsmax = maximum(ts)
-tslength = lastindex(ts)
+tsmin = minimum(tsd)
+tsmax = maximum(tsd)
+tslength = lastindex(tsd)
 
-p = ARTime.TimeSeries()
+p = ARTime.TimeSeriesDetector()
 jline = ARTime.init(tsmin, tsmax, tslength, p)
 ```
 
@@ -79,7 +79,7 @@ jline = ARTime.init(tsmin, tsmax, tslength, p)
 ### 3. Detect Anomalies
 
 ```julia
-anomalyscores = map(x -> ARTime.process_sample!(x, p), ts)
+anomalyscores = map(x -> ARTime.process_sample!(x, p), tsd)
 ```
 
 - Processes all samples using `map` for efficiency
@@ -114,9 +114,9 @@ After running this example, you can:
 using Plots
 
 # Plot signal and detected anomalies
-plot(ts, label = "Signal", linewidth = 2)
+plot(tsd, label = "Signal", linewidth = 2)
 scatter!(findall(x -> x > 0, anomalyscores),
-    ts[findall(x -> x > 0, anomalyscores)],
+    tsd[findall(x -> x > 0, anomalyscores)],
     label = "Detected Anomalies", color = :red, markersize = 5)
 
 xlabel!("Time")
@@ -208,7 +208,7 @@ To use a different NAB dataset:
 ```julia
 # Change the data file path
 df = CSV.read("Data/your_dataset.csv", DataFrame)
-ts = Vector(df.value)
+tsd = Vector(df.value)
 ```
 
 Available NAB datasets include:
@@ -222,7 +222,7 @@ Available NAB datasets include:
 
 ```julia
 # Create detector with custom parameters
-p = ARTime.TimeSeries()
+p = ARTime.TimeSeriesDetector()
 
 # Modify parameters before initialization
 p.window = 16              # Larger window
@@ -249,18 +249,18 @@ for dataset in datasets
     
     # Load data
     df = CSV.read("Data/$dataset", DataFrame)
-    ts = Vector(df.value)
+    tsd = Vector(df.value)
     
     # Initialize detector
-    tsmin = minimum(ts)
-    tsmax = maximum(ts)
-    tslength = lastindex(ts)
+    tsmin = minimum(tsd)
+    tsmax = maximum(tsd)
+    tslength = lastindex(tsd)
     
-    p = ARTime.TimeSeries()
+    p = ARTime.TimeSeriesDetector()
     ARTime.init(tsmin, tsmax, tslength, p)
     
     # Detect anomalies
-    anomalyscores = map(x -> ARTime.process_sample!(x, p), ts)
+    anomalyscores = map(x -> ARTime.process_sample!(x, p), tsd)
     
     # Save results
     CSV.write("results_$dataset.csv",

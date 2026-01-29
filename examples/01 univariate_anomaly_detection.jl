@@ -204,15 +204,15 @@ signal, anomaly_positions = generate_synthetic_data()
 ```julia
 dmin, dmax = minimum(signal), maximum(signal)
 dlength = length(signal)
-ts = ARTime.TimeSeries()
-ARTime.init(dmin, dmax, dlength, ts)
+tsd = ARTime.TimeSeriesDetector()
+ARTime.init(signal, tsd)
 ```
 
 **3. Detect Anomalies**:
 ```julia
 anomalies = zeros(length(signal))
 for (i, A) in enumerate(signal)
-	anomalies[i] = ARTime.process_sample!(A, ts)
+	anomalies[i] = ARTime.process_sample!(A, tsd)
 end
 ```
 
@@ -265,17 +265,17 @@ function main(seed::Int)
 	# Initialize ARTime parameters
 	dmin, dmax = minimum(signal), maximum(signal)
 	dlength = length(signal)
-	ts = ARTime.TimeSeries()
-	ARTime.init(dmin, dmax, dlength, ts)
+	tsd = ARTime.TimeSeriesDetector()
+	ARTime.init(signal, tsd)
 
 	# Process the signal and detect anomalies
 	anomalies = zeros(length(signal))
 	for (i, A) in enumerate(signal)
-		anomalies[i] = ARTime.process_sample!(A, ts)
+		anomalies[i] = ARTime.process_sample!(A, tsd)
 	end
 
 	# Calculate metrics for the test period (after probationary period)
-	probationary_period = ts.probationary_period
+	probationary_period = tsd.probationary_period
 	test_period_start = probationary_period + 1
 
 	# calculate metrics here
@@ -468,10 +468,10 @@ signal, anomaly_positions = generate_synthetic_data()
 
 **2. Detect Anomalies**:
 ```julia
-ts = ARTime.TimeSeries()
-ARTime.init(minimum(signal), maximum(signal), length(signal), ts)
+tsd = ARTime.TimeSeriesDetector()
+ARTime.init((signal), tsd)
 for (i, A) in enumerate(signal)
-	anomalies[i] = ARTime.process_sample!(A, ts)
+	anomalies[i] = ARTime.process_sample!(A, tsd)
 end
 ```
 
@@ -536,17 +536,17 @@ function run_example_with_plot(seed::Int = 42)
 	# Initialize ARTime parameters
 	dmin, dmax = minimum(signal), maximum(signal)
 	dlength = length(signal)
-	ts = ARTime.TimeSeries()
-	ARTime.init(dmin, dmax, dlength, ts)
+	tsd = ARTime.TimeSeriesDetector()
+	ARTime.init(signal, tsd)
 
 	# Process the signal and detect anomalies
 	anomalies = zeros(length(signal))
 	for (i, A) in enumerate(signal)
-		anomalies[i] = ARTime.process_sample!(A, ts)
+		anomalies[i] = ARTime.process_sample!(A, tsd)
 	end
 
 	# Calculate metrics for the test period (after probationary period)
-	probationary_period = ts.probationary_period
+	probationary_period = tsd.probationary_period
 	test_period_start = probationary_period + 1
 
 	# calculate metrics here
@@ -599,4 +599,4 @@ end
 run_10_fold()
 
 # Uncomment the line below to run with plotting for a single seed
-# run_example_with_plot(42)
+run_example_with_plot(42)
